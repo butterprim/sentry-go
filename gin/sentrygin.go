@@ -19,9 +19,10 @@ const sdkIdentifier = "sentry.go.gin"
 const valuesKey = "sentry"
 
 type handler struct {
-	repanic         bool
-	waitForDelivery bool
-	timeout         time.Duration
+	repanic                 bool
+	waitForDelivery         bool
+	timeout                 time.Duration
+	beforeTransactionFinish func(ctx context.Context)
 }
 
 type Options struct {
@@ -34,6 +35,8 @@ type Options struct {
 	WaitForDelivery bool
 	// Timeout for the event delivery requests.
 	Timeout time.Duration
+	// BeforeTransactionFinish is ran before a transaction is wrapped up.
+	BeforeTransactionFinish func(ctx context.Context)
 }
 
 // New returns a function that satisfies gin.HandlerFunc interface
@@ -44,9 +47,10 @@ func New(options Options) gin.HandlerFunc {
 		timeout = 2 * time.Second
 	}
 	return (&handler{
-		repanic:         options.Repanic,
-		timeout:         timeout,
-		waitForDelivery: options.WaitForDelivery,
+		repanic:                 options.Repanic,
+		timeout:                 timeout,
+		waitForDelivery:         options.WaitForDelivery,
+		beforeTransactionFinish: options.BeforeTransactionFinish,
 	}).handle
 }
 
@@ -84,6 +88,9 @@ func (h *handler) handle(c *gin.Context) {
 		options...,
 	)
 	defer func() {
+		if h.beforeTransactionFinish != nil {
+			h.beforeTransactionFinish(ctx)
+		}
 		transaction.Status = sentry.HTTPtoSpanStatus(c.Writer.Status())
 		transaction.Finish()
 	}()
